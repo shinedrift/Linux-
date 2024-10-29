@@ -1,6 +1,6 @@
-#include "BufferedFile.h"
+#include "CLBufferedFile.h"
 
-BufferedFile::BufferedFile(const std::string &file_path, size_t buffer_size, size_t block_size, std::ios::openmode mode)
+CLBufferedFile::CLBufferedFile(const std::string &file_path, size_t buffer_size, size_t block_size, std::ios::openmode mode)
     : block_size_(block_size), file_pos_(0), cache_(buffer_size / block_size, block_size) {
     file_.open(file_path, mode);
     if (!file_.is_open()) {
@@ -8,12 +8,12 @@ BufferedFile::BufferedFile(const std::string &file_path, size_t buffer_size, siz
     }
 }
 
-BufferedFile::~BufferedFile() {
+CLBufferedFile::~CLBufferedFile() {
     flush();
     if (file_.is_open()) file_.close();
 }
 
-void BufferedFile::write(const char *data, size_t size) {
+void CLBufferedFile::write(const char *data, size_t size) {
     size_t bytes_written = 0;
     while (bytes_written < size) {
         size_t block_index = getBlockIndex(file_pos_);
@@ -31,7 +31,7 @@ void BufferedFile::write(const char *data, size_t size) {
     }
 }
 
-size_t BufferedFile::read(char *buffer, size_t size) {
+size_t CLBufferedFile::read(char *buffer, size_t size) {
     size_t bytes_read = 0;
     while (bytes_read < size) {
         size_t block_index = getBlockIndex(file_pos_);
@@ -54,27 +54,31 @@ size_t BufferedFile::read(char *buffer, size_t size) {
     return bytes_read;
 }
 
-void BufferedFile::seek(std::streampos offset, std::ios::seekdir direction) {
+void CLBufferedFile::seek(std::streampos offset, std::ios::seekdir direction) {
     flush();
     file_.seekg(offset, direction);
     file_.seekp(offset, direction);
     file_pos_ = file_.tellg();
 }
 
-void BufferedFile::flush() {
+void CLBufferedFile::flush() {
     // 将缓存中的块数据写入文件
-    for (auto &[block_index, block_data] : cache_.cache_list_) {
-        file_.seekp(block_index * block_size_);
+
+    std::list<std::pair<size_t, std::vector<char>>> cache_list_ = cache_.getCacheList();
+    for (const auto &block : cache_list_) {
+        size_t block_no =  block.first;
+        const std::vector<char> block_data = block.second;
+        file_.seekp(block_no * block_size_);
         file_.write(block_data.data(), block_data.size());
     }
 }
 
 // 获取给定位置所在的块索引
-size_t BufferedFile::getBlockIndex(std::streampos pos) const {
+size_t CLBufferedFile::getBlockIndex(std::streampos pos) const {
     return pos / block_size_;
 }
 
 // 获取给定位置在块内的偏移量
-size_t BufferedFile::getOffsetInBlock(std::streampos pos) const {
+size_t CLBufferedFile::getOffsetInBlock(std::streampos pos) const {
     return pos % block_size_;
 }
