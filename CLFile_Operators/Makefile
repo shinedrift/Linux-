@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall
 TARGET = BufferedFileApp
-SOURCES = CLBufferedFile.cpp main.cpp
+SOURCES = CLBufferedFile.cpp CLLRUCache.cpp main.cpp
 
 # 测试目标
 TEST_TARGET = TestLRUCache
