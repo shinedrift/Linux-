@@ -1,39 +1,115 @@
 #include "CLBufferedFile.h"
 #include <iostream>
 #include <cstring>
+#include <chrono>
+#include <fstream>
+#include <cstdlib>
+#include <ctime>
+
+#define FILE_SIZE 1 * 1024 * 1024 * 1024  // 文件大小：1GB
+#define BLOCK_SIZE 4096*2                   // 块大小：4KB
+#define CACHE_CAPACITY 256                // 缓存容量：256个块
+
+// 模拟不使用缓存的写入操作
+void writeWithoutCache(const std::string &filename) {
+    std::ofstream file(filename, std::ios::out | std::ios::binary);
+    if (!file) {
+        std::cerr << "Error opening file for writing" << std::endl;
+        return;
+    }
+
+    std::vector<char> data(BLOCK_SIZE, 'A');  // 每块写入 'A'
+    for (size_t i = 0; i < FILE_SIZE / BLOCK_SIZE; ++i) {
+        file.write(data.data(), BLOCK_SIZE);
+    }
+
+    file.close();
+}
+
+// 模拟不使用缓存的读取操作
+void readWithoutCache(const std::string &filename) {
+    std::ifstream file(filename, std::ios::in | std::ios::binary);
+    if (!file) {
+        std::cerr << "Error opening file for reading" << std::endl;
+        return;
+    }
+
+    std::vector<char> buffer(BLOCK_SIZE);
+    for (size_t i = 0; i < FILE_SIZE / BLOCK_SIZE; ++i) {
+        file.read(buffer.data(), BLOCK_SIZE);
+    }
+
+    file.close();
+}
+
+// 模拟随机访问文件并读取
+void randomAccessRead(CLBufferedFile &bufferedFile) {
+    std::vector<char> buffer(BLOCK_SIZE);
+    size_t num_accesses = 0;
+    
+    // 随机读取文件中的块，模拟缓存命中/未命中
+    for (size_t i = 0; i < FILE_SIZE / BLOCK_SIZE; ++i) {
+        size_t block_num = rand() % (FILE_SIZE / BLOCK_SIZE);
+        bufferedFile.read(buffer.data(), BLOCK_SIZE);
+        num_accesses++;
+    }
+    std::cout << "Total accesses: " << num_accesses << std::endl;
+}
+
+// 使用缓存的写入性能测试
+void writeWithCache(CLBufferedFile &bufferedFile) {
+    std::vector<char> data(BLOCK_SIZE, 'A');  // 每块写入 'A'
+    for (size_t i = 0; i < FILE_SIZE / BLOCK_SIZE; ++i) {
+        bufferedFile.write(data.data(), BLOCK_SIZE);
+    }
+}
+
+// 使用缓存的读取性能测试
+void readWithCache(CLBufferedFile &bufferedFile) {
+    std::vector<char> buffer(BLOCK_SIZE);
+    for (size_t i = 0; i < FILE_SIZE / BLOCK_SIZE; ++i) {
+        bufferedFile.read(buffer.data(), BLOCK_SIZE);
+    }
+}
 
 int main() {
-    try {
-        // 创建 BufferedFile 实例，块大小为 4KB
-        CLBufferedFile bufferedFile("example.txt", 64 * 1024 * 1024, 4096);
+    srand(time(0));  // 设置随机种子
 
-        // 写入一些数据到文件
-        const char *data = "Hello, World!";
-        bufferedFile.write(data, strlen(data));
+    std::string filename = "test_file.bin";
+    
+    // 不使用缓存的写入性能测试
+    auto start = std::chrono::high_resolution_clock::now();
+    writeWithoutCache(filename);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> write_no_cache_duration = end - start;
+    std::cout << "Write without cache time: " << write_no_cache_duration.count() << " seconds" << std::endl;
 
-        // 移动文件指针到文件开头
-        bufferedFile.seek(0, std::ios::beg);
+    // 不使用缓存的读取性能测试
+    start = std::chrono::high_resolution_clock::now();
+    readWithoutCache(filename);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> read_no_cache_duration = end - start;
+    std::cout << "Read without cache time: " << read_no_cache_duration.count() << " seconds" << std::endl;
 
-        // 读取写入的数据，确保缓冲区足够大并添加字符串终止符
-        char buffer[14] = {0};  // 多留一个空间用于 `\0`
-        bufferedFile.read(buffer, sizeof(buffer) - 1);
-        buffer[13] = '\0';  // 手动添加终止符
-        std::cout << "Read data: " << buffer << std::endl;
+    // 使用缓存的写入性能测试
+    CLBufferedFile bufferedFileWithCache(filename, FILE_SIZE, BLOCK_SIZE, std::ios::in | std::ios::out | std::ios::binary);
+    start = std::chrono::high_resolution_clock::now();
+    writeWithCache(bufferedFileWithCache);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> write_with_cache_duration = end - start;
+    std::cout << "Write with cache time: " << write_with_cache_duration.count() << " seconds" << std::endl;
 
-        // 再次写入数据，检查缓存效果
-        const char *moreData = "Buffered File Test";
-        bufferedFile.write(moreData, strlen(moreData));
-        bufferedFile.seek(0, std::ios::beg);
+    // 使用缓存的读取性能测试
+    start = std::chrono::high_resolution_clock::now();
+    readWithCache(bufferedFileWithCache);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> read_with_cache_duration = end - start;
+    std::cout << "Read with cache time: " << read_with_cache_duration.count() << " seconds" << std::endl;
 
-        // 读取新数据以验证缓存和写入是否成功
-        char buffer2[31] = {0};  // 增大缓冲区以容纳全部数据
-        bufferedFile.read(buffer2, sizeof(buffer2) - 1);
-        buffer2[30] = '\0';  // 手动添加终止符
-        std::cout << "Read data after additional write: " << buffer2 << std::endl;
-
-    } catch (const std::ios_base::failure &e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
-    }
+    // 随机访问测试
+    std::cout << "Random access with cache:" << std::endl;
+    randomAccessRead(bufferedFileWithCache);
 
     return 0;
 }
+

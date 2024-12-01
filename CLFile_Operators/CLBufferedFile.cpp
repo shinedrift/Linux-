@@ -1,5 +1,8 @@
 #include "CLBufferedFile.h"
 
+bool cache_need_flush = false;
+
+// 在构造函数中调用open
 CLBufferedFile::CLBufferedFile(const std::string &file_path, size_t buffer_size, size_t block_size, std::ios::openmode mode)
     : block_size_(block_size), file_pos_(0), cache_(buffer_size / block_size, block_size) {
     file_.open(file_path, mode);
@@ -7,7 +10,7 @@ CLBufferedFile::CLBufferedFile(const std::string &file_path, size_t buffer_size,
         throw std::ios_base::failure("Failed to open file: " + file_path);
     }
 }
-
+// 在析构函数中调用close
 CLBufferedFile::~CLBufferedFile() {
     flush();
     if (file_.is_open()) file_.close();
@@ -20,14 +23,15 @@ void CLBufferedFile::write(const char *data, size_t size) {
         size_t offset_in_block = getOffsetInBlock(file_pos_);
 
         std::vector<char> block_data(block_size_, 0);
-        cache_.get(block_index, block_data);
+        cache_.get(block_index, block_data);    // 获取缓存中的数据
 
         size_t bytes_to_copy = std::min(size - bytes_written, block_size_ - offset_in_block);
         std::copy(data + bytes_written, data + bytes_written + bytes_to_copy, block_data.begin() + offset_in_block);
 
-        cache_.put(block_index, block_data);
+        cache_.put(block_index, block_data);    // 更新缓存
         bytes_written += bytes_to_copy;
         file_pos_ += bytes_to_copy;
+        cache_need_flush = true;    // 刷新标志位
     }
 }
 
@@ -63,14 +67,17 @@ void CLBufferedFile::seek(std::streampos offset, std::ios::seekdir direction) {
 
 void CLBufferedFile::flush() {
     // 将缓存中的块数据写入文件
-
+    if (cache_need_flush) {
     std::list<std::pair<size_t, std::vector<char>>> cache_list_ = cache_.getCacheList();
-    for (const auto &block : cache_list_) {
-        size_t block_no =  block.first;
-        const std::vector<char> block_data = block.second;
-        file_.seekp(block_no * block_size_);
-        file_.write(block_data.data(), block_data.size());
+        for (const auto &block : cache_list_) {
+            size_t block_no =  block.first;
+            const std::vector<char> block_data = block.second;
+            file_.seekp(block_no * block_size_);
+            file_.write(block_data.data(), block_data.size());
+        }
+        cache_need_flush = false;
     }
+
 }
 
 // 获取给定位置所在的块索引
